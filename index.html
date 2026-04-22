@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>АгроФорма — Маржинальний аналіз</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <span style="font-size:24px">🌾</span>
+  <h1>АгроФорма</h1>
+  <span>Система маржинального аналізу сільськогосподарського підприємства</span>
+</header>
+
+<div class="app">
+
+  <!-- ── Sidebar navigation ───────────────────────────── -->
+  <nav class="sidebar">
+    <button class="sidebar-btn active" id="tab-crop"  onclick="switchModule('crop')">
+      <span class="icon">🌱</span><span>Рослинництво</span>
+    </button>
+    <button class="sidebar-btn" id="tab-swine" onclick="switchModule('swine')">
+      <span class="icon">🐷</span><span>Відгодівля свиней</span>
+    </button>
+    <button class="sidebar-btn" id="tab-bulls" onclick="switchModule('bulls')">
+      <span class="icon">🐂</span><span>Розведення бичків</span>
+    </button>
+    <button class="sidebar-btn" id="tab-dairy" onclick="switchModule('dairy')">
+      <span class="icon">🐄</span><span>Молочне скотарство</span>
+    </button>
+  </nav>
+
+  <div class="main-area">
+
+    <!-- ── Forms list panel ─────────────────────────────── -->
+    <div class="forms-panel">
+      <div class="forms-panel-header">
+        <h3 id="forms-panel-title">Форми</h3>
+        <button class="btn btn-primary btn-sm" onclick="newForm()">+ Нова</button>
+      </div>
+      <div class="forms-list" id="forms-list"></div>
+    </div>
+
+    <!-- ── Editor area ──────────────────────────────────── -->
+    <div class="editor-area">
+
+      <!-- Empty state -->
+      <div id="editor-empty" class="empty-state" style="flex:1">
+        <div class="big-icon">📋</div>
+        <div>Оберіть форму або створіть нову</div>
+        <button class="btn btn-primary" onclick="newForm()">Створити форму</button>
+      </div>
+
+      <!-- Active form editor -->
+      <div id="editor-content" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+        <div class="editor-toolbar">
+          <input type="text" id="form-name-input" placeholder="Назва форми..." onchange="saveCurrentForm()">
+          <button class="btn btn-green"   onclick="saveCurrentForm()">💾 Зберегти</button>
+          <button class="btn btn-outline" onclick="duplicateForm()">📋 Дублювати</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCurrentForm()">🗑</button>
+        </div>
+        <div class="form-tabs" id="form-tabs"></div>
+        <div class="form-body" id="form-body"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
