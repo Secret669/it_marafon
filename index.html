@@ -2,43 +2,54 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>АгроФорма — Маржинальний аналіз</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header>
-  <span style="font-size:24px">🌾</span>
+  <span style="font-size:22px">🌾</span>
   <h1>АгроФорма</h1>
-  <span>Система маржинального аналізу сільськогосподарського підприємства</span>
+  <span class="subtitle" style="font-size:12px;color:#a0b4cc;margin-left:auto">
+    Система маржинального аналізу
+  </span>
+  <!-- Mobile: hamburger opens sidebar -->
+  <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Меню модулів">☰</button>
 </header>
+
+<!-- Mobile overlay backdrop (closes any open panel) -->
+<div class="mobile-overlay" id="mobile-overlay" onclick="closeMobileOverlays()"></div>
 
 <div class="app">
 
   <!-- ── Sidebar navigation ───────────────────────────── -->
-  <nav class="sidebar">
-    <button class="sidebar-btn active" id="tab-crop"  onclick="switchModule('crop')">
+  <nav class="sidebar" id="sidebar">
+    <button class="sidebar-btn active" id="tab-crop"  onclick="switchModule('crop');closeMobileOverlays()">
       <span class="icon">🌱</span><span>Рослинництво</span>
     </button>
-    <button class="sidebar-btn" id="tab-swine" onclick="switchModule('swine')">
+    <button class="sidebar-btn" id="tab-swine" onclick="switchModule('swine');closeMobileOverlays()">
       <span class="icon">🐷</span><span>Відгодівля свиней</span>
     </button>
-    <button class="sidebar-btn" id="tab-bulls" onclick="switchModule('bulls')">
+    <button class="sidebar-btn" id="tab-bulls" onclick="switchModule('bulls');closeMobileOverlays()">
       <span class="icon">🐂</span><span>Розведення бичків</span>
     </button>
-    <button class="sidebar-btn" id="tab-dairy" onclick="switchModule('dairy')">
+    <button class="sidebar-btn" id="tab-dairy" onclick="switchModule('dairy');closeMobileOverlays()">
       <span class="icon">🐄</span><span>Молочне скотарство</span>
+    </button>
+    <button class="sidebar-btn" id="tab-poultry" onclick="switchModule('poultry');closeMobileOverlays()">
+      <span class="icon">🐔</span><span>Птахівництво</span>
     </button>
   </nav>
 
   <div class="main-area">
 
     <!-- ── Forms list panel ─────────────────────────────── -->
-    <div class="forms-panel">
+    <div class="forms-panel" id="forms-panel">
       <div class="forms-panel-header">
         <h3 id="forms-panel-title">Форми</h3>
         <button class="btn btn-primary btn-sm" onclick="newForm()">+ Нова</button>
+        <button class="mobile-close-btn" onclick="closeMobileOverlays()" title="Закрити">✕</button>
       </div>
       <div class="forms-list" id="forms-list"></div>
     </div>
@@ -68,6 +79,9 @@
     </div>
   </div>
 </div>
+
+<!-- Mobile: floating button to open forms panel -->
+<button class="mobile-forms-btn" onclick="toggleFormsPanel()" title="Список форм">📋</button>
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
