@@ -16,14 +16,16 @@ let currentTab    = 0;
 let currentForm   = null;
 
 const MODULES = {
-  crop:  { label: 'Рослинництво',       icon: '🌱',
-           tabs: ['Загальна інформація', 'Маржинальний дохід', 'Основні засоби', 'Аналіз прибутковості'] },
-  swine: { label: 'Відгодівля свиней',  icon: '🐷',
-           tabs: ['МД — Таблиця 1', 'Каскад прибутковості', 'Аналіз беззбитковості'] },
-  bulls: { label: 'Розведення бичків',  icon: '🐂',
-           tabs: ['МД — Таблиця 1', 'Агрегація — Таблиця 2', 'Прибуток — Таблиця 3'] },
-  dairy: { label: 'Молочне скотарство', icon: '🐄',
-           tabs: ['МД — Таблиця 1', 'Агрегація — Таблиця 2', 'Прибуток — Таблиця 3'] },
+  crop:    { label: 'Рослинництво',       icon: '🌱',
+             tabs: ['Загальна інформація', 'Маржинальний дохід', 'Основні засоби', 'Аналіз прибутковості'] },
+  swine:   { label: 'Відгодівля свиней',  icon: '🐷',
+             tabs: ['МД — Таблиця 1', 'Каскад прибутковості', 'Аналіз беззбитковості'] },
+  bulls:   { label: 'Розведення бичків',  icon: '🐂',
+             tabs: ['МД — Таблиця 1', 'Агрегація — Таблиця 2', 'Прибуток — Таблиця 3'] },
+  dairy:   { label: 'Молочне скотарство', icon: '🐄',
+             tabs: ['МД — Таблиця 1', 'Агрегація — Таблиця 2', 'Прибуток — Таблиця 3'] },
+  poultry: { label: 'Птахівництво',       icon: '🐔',
+             tabs: ['МД — Таблиця 1', 'Каскад прибутковості', 'Аналіз беззбитковості'] },
 };
 
 // ============================================================
@@ -134,7 +136,8 @@ window.deleteCurrentForm = async function() {
 // COLLECT DATA
 // ============================================================
 function collectFormData() {
-  const data = {};
+  // Merge with existing data to preserve values from other tabs
+  const data = Object.assign({}, currentForm ? (currentForm.data || {}) : {});
   document.querySelectorAll('[data-field]').forEach(el => {
     data[el.dataset.field] = el.value;
   });
@@ -179,7 +182,14 @@ function renderTabs() {
     .join('');
 }
 window.switchTab = function(i) {
-  window.saveCurrentForm();
+  // Silent auto-save: preserve current tab data without showing toast
+  if (currentFormId && currentForm) {
+    const name = document.getElementById('form-name-input')?.value || currentForm.name;
+    const data = collectFormData();
+    currentForm.name = name;
+    currentForm.data = data;
+    updateForm(currentFormId, name, data);
+  }
   currentTab = i;
   renderTabs();
   renderTab();
@@ -189,10 +199,11 @@ function renderTab() {
   if (!currentForm) return;
   const body = document.getElementById('form-body');
   const builders = {
-    crop:  [buildCropGeneral,  buildCropGM,    buildCropAssets,   buildCropAnalysis],
-    swine: [buildSwineF1,      buildSwineF2,   buildSwineAnalysis],
-    bulls: [buildBullsMD,      buildBullsAgg,  buildBullsProfit],
-    dairy: [buildDairyMD,      buildDairyAgg,  buildDairyProfit],
+    crop:    [buildCropGeneral,   buildCropGM,    buildCropAssets,    buildCropAnalysis],
+    swine:   [buildSwineF1,       buildSwineF2,   buildSwineAnalysis],
+    bulls:   [buildBullsMD,       buildBullsAgg,  buildBullsProfit],
+    dairy:   [buildDairyMD,       buildDairyAgg,  buildDairyProfit],
+    poultry: [buildPoultryMD,     buildPoultryProfit, buildPoultryAnalysis],
   };
   body.innerHTML = '';
   builders[currentModule][currentTab](body, currentForm.data || {});
@@ -214,6 +225,302 @@ function toast(msg, type = '') {
 function fnum(v)       { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 function fmt(v, dec=2) { return isNaN(v)||!isFinite(v) ? '—' : Number(v).toFixed(dec); }
 
+// ============================================================
+// TOOLTIPS — підказки для полів
+// Ключ: ім'я поля (або загальний префікс без варіанту: sw_, bl_, dy_, pt_)
+// ============================================================
+const TOOLTIPS = {
+  // Загальна інформація (crop)
+  gen_rain:          'Середньорічна кількість опадів у мм (для більшості регіонів України 450–650 мм)',
+  gen_veg:           'Тривалість вегетаційного сезону в місяцях (зазвичай 6–8 місяців)',
+  gen_rent_price:    'Середня орендна плата за 1 га с/г угідь на рік',
+  gen_land_value:    'Ринкова вартість 1 га власної землі — потрібна для розрахунку альтернативних витрат',
+  gen_workers_perm:  'Кількість постійно зайнятих працівників господарства (на повну ставку)',
+  gen_workers_seas:  'Кількість сезонних (тимчасових) працівників у пікові періоди',
+  gen_labor_family:  'Сукупна кількість годин праці членів родини господаря на рік',
+  gen_wage_own:      'Годинна ставка оплати власної (сімейної) праці — використовується як альтернативні витрати',
+  gen_wage_hire:     'Годинна ставка оплати найманих працівників (без ПДФО та нарахувань)',
+  // Маржинальний дохід (crop)
+  gm_area:           'Площа вирощування даної культури в гектарах',
+  gm_p1_gross_qty:   'Валова врожайність основної продукції в ц/га (включно з насіннєвим фондом)',
+  gm_p1_qty:         'Товарна кількість продукції в ц/га, що реалізується (без насіннєвого фонду)',
+  gm_p1_price:       'Ціна реалізації 1 ц (або кг) основної продукції',
+  gm_subsidy:        'Субсидії, дотації та прямі виплати держави на 1 га посіву',
+  gm_mech_contract:  'Вартість послуг підрядних механізованих організацій (оранка, посів, збирання тощо)',
+  gm_mech_own:       'Змінні витрати на паливо та мастило власної техніки',
+  gm_mech_repair:    'Поточний ремонт та технічне обслуговування основних засобів',
+  gm_dry:            'Витрати на сушіння та зберігання зерна або іншої продукції',
+  gm_insure:         'Витрати на страхування посівів від граду, засухи та інших ризиків',
+  gm_other:          'Інші прямі витрати, що не включені в попередні категорії',
+  // Каскад (crop)
+  ca_cap_own_pct:    'Процентна ставка на власний капітал (альтернативна вартість) — зазвичай 12–18%',
+  ca_cap_hire_pct:   'Процентна ставка на залучений (банківський) капітал — зазвичай 15–22%',
+  ca_cap_own_share:  'Частка власного капіталу від 0 до 1 (наприклад 0.5 = 50% власний)',
+  ca_labor_own_h:    'Кількість годин власної праці на 1 га вирощування культури',
+  ca_labor_hire_h:   'Кількість годин найманої праці на 1 га вирощування культури',
+  ca_land_own:       'Альтернативні витрати на власну землю грн/га (зазвичай = ставка оренди)',
+  ca_land_rent:      'Реальна орендна плата за орендовану землю грн/га',
+  // Свині (загальний ключ, застосовується до sw1_ та sw2_)
+  sw_w_start:        'Жива маса поросяти на початку відгодівлі в кг (зазвичай 25–30 кг)',
+  sw_w_end:          'Жива маса свині при реалізації в кг (зазвичай 100–120 кг)',
+  sw_days_fat:       'Тривалість відгодівлі від постановки до реалізації в днях (зазвичай 90–120 днів)',
+  sw_days_san:       'Санітарна пауза між партіями для дезінфекції та очищення приміщень (зазвичай 5–14 днів)',
+  sw_yield:          'Вихід туші від живої маси в % (стандартно 74–80% для товарних свиней)',
+  sw_heads:          'Кількість місць (голів) в одній виробничій партії',
+  sw_price:          'Ціна реалізації 1 кг забійної маси (туші)',
+  sw_piglet_cost:    'Закупівельна вартість одного поросяти при постановці на відгодівлю',
+  sw_vet:            'Витрати на ветеринарні препарати, вакцинацію та гігієну на всю партію',
+  sw_services:       'Вартість послуг підрядних організацій (зоотехнік, забій тощо)',
+  sw_mech_feed:      'Витрати на роботу автоматичних кормороздавачів та кормових ліній',
+  sw_mech_vent:      'Витрати на роботу вентиляційних систем та мікроклімату',
+  sw_mech_man:       'Витрати на механічне прибирання гною та гноєсховище',
+  sw_other:          'Інші прямі змінні витрати, що не включені вище',
+  // Бички
+  bl_w_start:        'Початкова жива маса телятини при постановці на відгодівлю в кг',
+  bl_w_end:          'Кінцева жива маса бичка при реалізації в кг',
+  bl_age_start:      'Вік тварини на початку відгодівлі в тижнях',
+  bl_age_end:        'Вік тварини при реалізації в місяцях',
+  bl_yield:          'Вихід м\'яса (туші) від живої маси в % (зазвичай 52–60% для бичків)',
+  bl_heads:          'Загальна кількість бичків у виробничій групі',
+  bl_price:          'Ціна реалізації 1 кг живої маси або забійної маси (за домовленістю)',
+  bl_calf_cost:      'Закупівельна вартість одного телятини для відгодівлі',
+  // Молочне скотарство
+  dy_lw:             'Жива маса однієї корови в кг (використовується для розрахунку УГ і вибракування)',
+  dy_lifespan:       'Середній термін використання корови в господарстві в роках (зазвичай 3–5 років)',
+  dy_replace_pct:    'Щорічний відсоток ремонту (заміни) поголів\'я — зазвичай 20–25%',
+  dy_calving_int:    'Міжотельний інтервал у днях (норма 365–385 днів)',
+  dy_calf_loss:      'Відсоток падежу телят від народження до відлучення',
+  dy_milk_yr:        'Річна молочна продуктивність однієї корови в кг',
+  dy_fat:            'Жирність молока в % (впливає на залікову вагу та надбавку до ціни)',
+  dy_prot:           'Вміст білка в молоці в % (впливає на якісну надбавку)',
+  dy_milk_price:     'Ціна реалізації 1 кг молока',
+  dy_calf_price:     'Ціна реалізації одного теляти (зазвичай у 1–2 тижні)',
+  dy_cull_yield:     'Вихід забійної маси вибракуваної корови від живої маси в %',
+  dy_cull_price:     'Ціна реалізації 1 кг живої маси вибракуваної корови',
+  // Птахівництво
+  pt_w_start:        'Жива маса добового курчати при постановці в г (стандартно 40–45 г)',
+  pt_w_end:          'Цільова жива маса бройлера при забої в г (стандартно 2200–2600 г)',
+  pt_days_fat:       'Тривалість вирощування від постановки до забою в днях (стандартно 35–42 дні)',
+  pt_days_san:       'Санітарна пауза між партіями в днях (зазвичай 10–14 днів)',
+  pt_yield:          'Вихід тушки від живої маси в % (стандарт для бройлерів 74–76%)',
+  pt_heads:          'Кількість місць (голів птиці) у виробничій партії',
+  pt_price:          'Ціна реалізації 1 кг забійної тушки бройлера',
+  pt_chick_cost:     'Закупівельна вартість одного добового курчати',
+  pt_vet:            'Витрати на ветеринарні препарати, вакцинацію та дезінфекцію на партію',
+  pt_services:       'Вартість підрядних послуг (зоотехнік, ветеринар-профілактик, ін.)',
+  pt_mech_feed:      'Витрати на роботу кормових ліній та бункерних годівниць',
+  pt_mech_vent:      'Витрати на роботу вентиляційних систем та системи мікроклімату',
+  pt_mech_man:       'Витрати на видалення підстилки та прибирання після виїмки',
+  pt_mech_heat:      'Витрати на газові та електричні обігрівачі (броудери) для курчат',
+  pt_other:          'Інші прямі змінні витрати (підстилка, тара, транспорт тощо)',
+  // Параметри каскаду
+  swc_cap_own_pct:   'Ставка альтернативних витрат на власний капітал (зазвичай 12–18%)',
+  swc_cap_hire_pct:  'Ставка по банківському кредиту на оборотний капітал (зазвичай 15–22%)',
+  swc_mach_a:        'Повна вартість придбання техніки та обладнання на 1 голову',
+  swc_build_a:       'Повна вартість будівництва або придбання приміщення на 1 голову',
+  swc_labor_own_h:   'Кількість годин власної праці на 1 голову за цикл',
+  swc_labor_hire_h:  'Кількість годин найманої праці на 1 голову за цикл',
+  swc_land_own:      'Альтернативні витрати на власну землю під будівлями та дорогами (грн/гол.)',
+  swc_land_rent:     'Орендна плата за землю під виробничими будівлями (грн/гол.)',
+  swc_gen_labor_h:   'Кількість годин загальної (управлінської) праці на 1 голову',
+  swc_fixed_spec:    'Інші постійні спеціальні витрати на 1 голову (страхування будівлі тощо)',
+  swc_overhead:      'Накладні витрати на 1 голову (бухгалтерія, зв\'язок, канцелярія тощо)',
+};
+
+// Підказки для колонок динамічних таблиць (за ключем колонки)
+const COL_TIPS = {
+  crop:         'Назва культури, що вирощується',
+  area:         'Площа вирощування в гектарах (не може бути від\'ємною)',
+  own:          'Власна площа угідь у гектарах',
+  rent:         'Орендована площа угідь у гектарах',
+  rotation_pos: 'Порядковий номер або назва позиції в сівозміні',
+  prev_crop:    'Культура-попередник у сівозміні (впливає на родючість і хвороби)',
+  notes:        'Довільні примітки або коментарі',
+  heads:        'Кількість голів тварин даної групи',
+  lu:           'Умовні голови (УГ) — авторозрахунок за коефіцієнтом виду',
+  facility:     'Кількість місць у виробничому приміщенні',
+  species:      'Вид тварин (корова, бичок, свиня, вівця тощо)',
+  type:         'Статево-вікова група тварин',
+  name:         'Назва корму, препарату або статті витрат',
+  unit:         'Одиниця виміру (кг, ц, л, шт.)',
+  qty:          'Кількість на 1 голову або 1 га за цикл',
+  price:        'Ціна за одиницю виміру',
+  sum:          'Сума = кількість × ціна (авторозрахунок)',
+  mj:           'Вміст обмінної енергії в МДж на кг корму',
+  dep:          'Амортизація = (A − R) / N × кількість (авторозрахунок)',
+  rep:          'Витрати на ремонт = A × % ремонту (авторозрахунок)',
+  maint:        'Витрати на догляд/утримання = A × % догляду (авторозрахунок)',
+  cnt:          'Кількість одиниць даного виду техніки або будівлі',
+  a:            'Вартість придбання (балансова) одного об\'єкта в грн',
+  r:            'Залишкова (ліквідаційна) вартість одного об\'єкта в грн',
+  n:            'Нормативний строк служби в роках',
+  pct:          'Відсоток витрат на ремонт від балансової вартості',
+  rev:          'Товарна продукція (виручка) від цього виду виробництва',
+  cost:         'Витрати на це виробництво',
+  md:           'Маржинальний дохід = виручка − витрати (авторозрахунок)',
+  ration:       'Частка цього корму в добовому раціоні тварин у відсотках',
+  role:         'Посада або функція працівника в господарстві',
+  phone:        'Номер телефону для оперативного зв\'язку',
+  email:        'Електронна адреса працівника',
+  pct:          'Відсоток від балансової вартості (не може бути від\'ємним)',
+};
+
+// Підказки за суфіксом поля — один запис покриває всі модулі
+// (sw1_vet, bl0_vet, dy0_vet → всі дають 'vet')
+const SUFFIX_TIPS = {
+  subsidy:         'Субсидії, дотації та прямі виплати від держави (грн)',
+  vet:             'Витрати на ветеринарні препарати, вакцинацію та санітарну гігієну',
+  services:        'Вартість послуг підрядних організацій (зоотехнік, забій, транспорт тощо)',
+  mech_feed:       'Витрати на роботу кормових ліній та автоматичних годівниць',
+  mech_vent:       'Витрати на роботу вентиляційних систем та підтримання мікроклімату',
+  mech_man:        'Витрати на механічне прибирання гною або видалення підстилки',
+  other:           'Інші прямі витрати, не включені в попередні категорії',
+  // Молочне скотарство
+  heifer:          'Щорічні витрати на ремонт поголів\'я (вартість телиці / термін використання)',
+  milk_mech:       'Витрати на роботу доїльної установки або доїльного залу',
+  feed_mech:       'Витрати на роботу кормороздавача або мобільного кормовоза',
+  vent:            'Витрати на роботу вентиляційної системи корівника',
+  manure_mech:     'Витрати на механічне прибирання гною (скрепер, насос гноєсховища)',
+  energy:          'Витрати на електроенергію, воду та опалення приміщення',
+  insem:           'Витрати на штучне запліднення (сперма + робота техніка-осіменатора)',
+  insure:          'Витрати на страхування тварин від хвороб та стихійних лих',
+  // Каскад прибутковості — параметри (однакові для всіх модулів)
+  cap_own_pct:     'Ставка альтернативних витрат на власний капітал (зазвичай 12–18%)',
+  cap_hire_pct:    'Ставка по банківському кредиту на оборотний капітал (зазвичай 15–22%)',
+  cap_own_share:   'Частка власного капіталу від 0 до 1 (наприклад 0.5 = 50% власний)',
+  mach_a:          'Балансова вартість техніки та обладнання на 1 голову або 1 га',
+  mach_dep_pct:    'Норма амортизації техніки у % на рік (зазвичай 8–15%)',
+  mach_rep_pct:    'Норма відрахувань на ремонт техніки у % від балансової вартості',
+  build_a:         'Балансова вартість виробничих будівель та споруд на 1 голову або 1 га',
+  build_dep_pct:   'Норма амортизації будівель у % на рік (зазвичай 4–5%)',
+  build_maint_pct: 'Норма відрахувань на утримання будівель у % від балансової вартості',
+  labor_own_h:     'Кількість годин власної (сімейної) праці на 1 голову або 1 га',
+  labor_hire_h:    'Кількість годин найманої праці на 1 голову або 1 га',
+  wage_own:        'Годинна ставка оплати власної (сімейної) праці',
+  wage_hire:       'Годинна ставка оплати найманих працівників',
+  land_own:        'Альтернативні витрати на власну землю під будівлями та дорогами',
+  land_rent:       'Орендна плата за землю під виробничими будівлями',
+  land_other:      'Інші альтернативні витрати, пов\'язані із землею та розташуванням',
+  gen_labor_h:     'Кількість годин загальногосподарської (управлінської) праці',
+  gen_wage:        'Годинна ставка загальногосподарської (управлінської) праці',
+  fixed_spec:      'Інші постійні спеціальні витрати (страхування будівлі, ліцензії тощо)',
+  overhead:        'Накладні витрати (бухгалтерія, зв\'язок, канцелярія, управління)',
+  // Аналіз беззбитковості
+  bep_price_md:    'Мінімальна ціна для покриття змінних витрат (беззбитковість за МД)',
+  bep_price_full:  'Мінімальна ціна для покриття всіх витрат (повна беззбитковість)',
+  bep_load:        'Мінімальний відсоток завантаженості потужностей для беззбитковості',
+  working_cap:     'Потреба в оборотному капіталі = змінні витрати × 0.6',
+  rent_md:         'Рентабельність за МД = МД / Виручка × 100%',
+  rent_profit:     'Рентабельність за прибутком = Прибуток / Виручка × 100%',
+};
+
+function getTip(field) {
+  if (TOOLTIPS[field]) return TOOLTIPS[field];
+  // Загальний ключ: sw1_/sw2_ → sw_, bl0_/bl1_ → bl_, dy0_/dy1_ → dy_, pt1_/pt2_ → pt_
+  const gen = field.replace(/^(sw|pt)[12]_/, '$1_').replace(/^(bl|dy)[01]_/, '$1_');
+  if (TOOLTIPS[gen]) return TOOLTIPS[gen];
+  // Суфіксний пошук — видаляємо будь-який модульний префікс (sw1_, bpc_, ca_, swa2_ тощо)
+  const suffix = field.replace(/^[a-z]{2,4}[0-9]?_/, '');
+  if (SUFFIX_TIPS[suffix]) return SUFFIX_TIPS[suffix];
+  // Fallback до підказок колонок таблиць
+  return COL_TIPS[field] || '';
+}
+
+// ============================================================
+// VALIDATION — антибаран-система
+// ============================================================
+(function initValidation() {
+  // Глобальний обробник подій введення — спрацьовує у фазі захоплення (до oninput)
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (el.type !== 'number' || el.readOnly) return;
+    const val = parseFloat(el.value);
+    if (isNaN(val)) return;
+    const minAttr = el.hasAttribute('min') ? parseFloat(el.getAttribute('min')) : null;
+    const maxAttr = el.hasAttribute('max') ? parseFloat(el.getAttribute('max')) : null;
+    let clamped = false;
+    if (minAttr !== null && val < minAttr) { el.value = minAttr; clamped = true; }
+    if (maxAttr !== null && val > maxAttr) { el.value = maxAttr; clamped = true; }
+    if (clamped) {
+      el.classList.add('input-clamped');
+      setTimeout(() => el.classList.remove('input-clamped'), 700);
+    }
+  }, true);
+})();
+
+// ============================================================
+// TOOLTIP BAR — плаваючи підказка (desktop hover + mobile focus)
+// ============================================================
+(function initTipPopup() {
+  const pop = document.createElement('div');
+  pop.id = 'field-tip-pop';
+  pop.className = 'field-tip-pop';
+  document.body.appendChild(pop);
+
+  let hideTimer = null;
+
+  function showTip(text, anchorEl) {
+    if (!text) return;
+    clearTimeout(hideTimer);
+    pop.textContent = text;
+    pop.classList.add('visible');
+    positionTip(anchorEl);
+  }
+
+  function positionTip(anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    const scrollY = window.scrollY;
+    const scrollX = window.scrollX;
+    const popW = 260;
+    const gap = 8;
+
+    // Default: below the field
+    let top  = rect.bottom + scrollY + gap;
+    let left = rect.left  + scrollX;
+
+    // Clamp to viewport horizontally
+    const vw = window.innerWidth;
+    if (left + popW > vw - 12) left = vw - popW - 12;
+    if (left < 8) left = 8;
+
+    // If not enough space below, flip above
+    if (rect.bottom + gap + 80 > window.innerHeight) {
+      top = rect.top + scrollY - gap - 80;
+      pop.classList.add('above');
+    } else {
+      pop.classList.remove('above');
+    }
+
+    pop.style.top  = top  + 'px';
+    pop.style.left = left + 'px';
+    pop.style.width = popW + 'px';
+  }
+
+  function hideTip() {
+    hideTimer = setTimeout(() => pop.classList.remove('visible'), 120);
+  }
+
+  document.addEventListener('focusin', e => {
+    const el = e.target;
+    if (!el.matches('input:not([readonly]),select')) return;
+    const tip = el.dataset.tip;
+    if (tip) showTip(tip, el);
+    else hideTip();
+  });
+
+  document.addEventListener('focusout', hideTip);
+
+  // Also show on hover (desktop)
+  document.addEventListener('mouseover', e => {
+    const el = e.target;
+    if (!el.matches('input:not([readonly]),select')) return;
+    if (el.dataset.tip) showTip(el.dataset.tip, el);
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.matches('input,select')) hideTip();
+  });
+})();
+
 function row(label, inputHtml, unit = '', small = '') {
   return `<div class="field-row">
     <div class="field-label">${label}${small ? `<small>${small}</small>` : ''}</div>
@@ -227,18 +534,26 @@ function sectionWrap(title, content, colorClass = '') {
     <div class="section-body">${content}</div>
   </div>`;
 }
-function numField(field, data, def = '', readonly = false) {
-  const val = fillField(data, field, def);
-  if (readonly) return `<input type="text" data-field="${field}" value="${escH(val)}" readonly class="calc" placeholder="авто">`;
-  return `<input type="number" data-field="${field}" value="${escH(val)}" step="any" oninput="recalcAll()">`;
+function numField(field, data, def = '', readonly = false, minVal = 0, maxVal = null) {
+  const val  = fillField(data, field, def);
+  const tip  = escH(getTip(field));
+  if (readonly) return `<input type="text" data-field="${field}" value="${escH(val)}" readonly class="calc" placeholder="авто"${tip ? ` data-tip="${tip}"` : ''}>`;
+  const minAttr = minVal !== null ? ` min="${minVal}"` : '';
+  const maxAttr = maxVal !== null ? ` max="${maxVal}"` : '';
+  return `<input type="number" data-field="${field}" value="${escH(val)}" step="any"${minAttr}${maxAttr} oninput="recalcAll()"${tip ? ` data-tip="${tip}"` : ''}>`;
+}
+function pctField(field, data, def = '') {
+  return numField(field, data, def, false, 0, 100);
 }
 function textField(field, data, placeholder = '') {
-  return `<input type="text" data-field="${field}" value="${escH(fillField(data,field))}" placeholder="${placeholder}" oninput="recalcAll()">`;
+  const tip = escH(getTip(field));
+  return `<input type="text" data-field="${field}" value="${escH(fillField(data,field))}" placeholder="${placeholder}" oninput="recalcAll()"${tip ? ` data-tip="${tip}"` : ''}>`;
 }
 function selectField(field, data, options) {
   const val  = fillField(data, field);
+  const tip  = escH(getTip(field));
   const opts = options.map(o => `<option value="${escH(o)}" ${val===o?'selected':''}>${escH(o)}</option>`).join('');
-  return `<select data-field="${field}" onchange="recalcAll()">${opts}</select>`;
+  return `<select data-field="${field}" onchange="recalcAll()"${tip ? ` data-tip="${tip}"` : ''}>${opts}</select>`;
 }
 
 // ── Combobox ─────────────────────────────────────────────────
@@ -311,11 +626,14 @@ function dynTable(section, rows, columns, opts = {}) {
   const bodyRows = rows.map((r, idx) => {
     const cells = columns.map(c => {
       const val = escH(r[c.key] || c.def || '');
+      const tip = escH(getTip(c.key) || (c.tip || ''));
+      const tipAttr = tip ? ` data-tip="${tip}"` : '';
       if (c.type === 'calc') {
-        return `<td><input data-col="${c.key}" data-dyn-row="${idx}" value="${val}" readonly class="calc"></td>`;
+        return `<td><input data-col="${c.key}" data-dyn-row="${idx}" value="${val}" readonly class="calc"${tipAttr}></td>`;
       }
       const type = c.type === 'number' ? 'number' : 'text';
-      return `<td><input type="${type}" data-col="${c.key}" data-dyn-row="${idx}" value="${val}" step="any" oninput="recalcAll()"></td>`;
+      const minAttr = type === 'number' ? ' min="0"' : '';
+      return `<td><input type="${type}" data-col="${c.key}" data-dyn-row="${idx}" value="${val}" step="any"${minAttr} oninput="recalcAll()"${tipAttr}></td>`;
     }).join('');
     return `<tr data-row-idx="${idx}">${cells}<td><button class="dyn-del-btn" onclick="dynDelRow('${section}',${idx})" title="Видалити">✕</button></td></tr>`;
   }).join('');
@@ -483,9 +801,9 @@ function manureTable(prefix, data, lu_field, defaults) {
   const c = (key) => `<input data-field="${prefix}${key}" readonly class="calc" style="width:100%;padding:3px 5px;border-radius:4px;font-size:12px">`;
   return `<table class="manure-table">
     <thead><tr>
-      <th>Речовина</th><th style="width:65px">кг/УГ</th><th style="width:50px">Еф.</th>
-      <th style="width:80px">Розр. к-сть</th><th style="width:65px">Ціна/кг</th>
-      <th style="width:80px">Вартість</th>
+      <th>Речовина</th><th style="width:65px">кг/УГ</th><th style="width:70px">Еф.</th>
+      <th style="width:90px">Розр. к-сть</th><th style="width:70px">Ціна/кг</th>
+      <th style="width:90px">Вартість</th>
     </tr></thead>
     <tbody>
       <tr>
@@ -513,31 +831,118 @@ function manureTable(prefix, data, lu_field, defaults) {
 // MODULE: РОСЛИННИЦТВО
 // ============================================================
 async function buildCropGeneral(body, data) {
-  body.innerHTML = sectionWrap('📋 Загальна інформація про підприємство', `
+  body.innerHTML =
+
+  // ── 1. Базові відомості про господарство ─────────────────
+  sectionWrap('📋 Загальна інформація про підприємство', `
     ${row('ПІБ викладача / відповідального', textField('gen_teacher', data))}
     ${row('Навчальний заклад',               textField('gen_school',  data))}
     ${row('Район, область',                  '<div id="ph-gen_region"></div>')}
-    ${row('Розмір підприємства',             numField('gen_size', data), 'га')}
     ${row('Організаційно-правова форма',     '<div id="ph-gen_orgform"></div>')}
-    ${row('Спеціалізація',                   '<div id="ph-gen_spec"></div>')}
-    ${row('Річна кількість опадів',          numField('gen_rain', data), 'мм')}
-    ${row('Використання зрошування',         selectField('gen_irrig', data, ['no','yes']))}
+    ${row('Спеціалізація господарства',      '<div id="ph-gen_spec"></div>')}
     ${row('Система вирощування',             '<div id="ph-gen_system"></div>')}
+    ${row('Річна кількість опадів',          numField('gen_rain', data), 'мм')}
+    ${row('Використання зрошування',         selectField('gen_irrig', data, ['ні','так']))}
     ${row('Вегетаційний період',             numField('gen_veg', data), 'місяців')}
     ${row('Грошова одиниця',                 '<div id="ph-gen_curr"></div>')}
-  `) + sectionWrap('👥 Співробітники', `
+  `) +
+
+  // ── 2. Земельний фонд ────────────────────────────────────
+  sectionWrap('🗺️ Земельний фонд господарства', `
+    <table class="table-section">
+      <thead><tr>
+        <th>Вид угідь</th>
+        <th style="width:110px">Власна, га</th>
+        <th style="width:110px">Орендована, га</th>
+        <th style="width:110px">Разом, га</th>
+      </tr></thead>
+      <tbody data-dyn-section="land_fund">
+        ${dynRows(data,'land_fund',[
+          {type:'Рілля',                        own:'',rent:'',total:''},
+          {type:'Луки та природні пасовища',    own:'',rent:'',total:''},
+          {type:'Сіяні пасовища',               own:'',rent:'',total:''},
+          {type:'Сінокоси',                     own:'',rent:'',total:''},
+          {type:'Багаторічні насадження',       own:'',rent:'',total:''},
+          {type:'Ліс та лісосмуги',             own:'',rent:'',total:''},
+          {type:'Ставки та водойми',            own:'',rent:'',total:''},
+          {type:'Ін. с/г угіддя',               own:'',rent:'',total:''},
+        ]).map((r,idx) => `<tr data-row-idx="${idx}">
+          <td><input type="text"   data-col="type"  data-dyn-row="${idx}" value="${escH(r.type||'')}" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;outline:none" oninput="recalcAll()"></td>
+          <td><input type="number" data-col="own"   data-dyn-row="${idx}" value="${escH(r.own||'')}"  step="any" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;outline:none" oninput="recalcAll()"></td>
+          <td><input type="number" data-col="rent"  data-dyn-row="${idx}" value="${escH(r.rent||'')}" step="any" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;outline:none" oninput="recalcAll()"></td>
+          <td><input data-col="total" data-dyn-row="${idx}" value="${escH(r.total||'')}" readonly class="calc" style="width:100%"></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <button class="add-row-btn" onclick="dynAddRow('land_fund')">+ Рядок</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+      <div>${row('<strong>Всього с/г угідь</strong>', numField('gen_land_total',data,'',true), 'га')}</div>
+      <div>${row('в т.ч. власна', numField('gen_land_own',data,'',true), 'га')}</div>
+      <div>${row('в т.ч. орендована', numField('gen_land_rent',data,'',true), 'га')}</div>
+    </div>
+    ${row('Середня орендна плата', numField('gen_rent_price',data), 'грн/га/рік')}
+    ${row('Вартість власної землі (оцінка)', numField('gen_land_value',data), 'грн/га')}
+  `, 'blue') +
+
+  // ── 3. Структура посівних площ та сівозміна ─────────────
+  sectionWrap('🌾 Структура посівних площ та сівозміна', `
+    <div style="font-size:11px;color:var(--gray);margin-bottom:8px">
+      Вкажіть усі культури, які вирощуються в господарстві. Площа рілля автоматично підраховується з блоку «Земельний фонд».
+    </div>
+    ${dynTable('crop_plan', dynRows(data,'crop_plan',[
+      {crop:'',area:'',pct:'',rotation_pos:'',prev_crop:'',notes:''},
+    ]), [
+      { key:'crop',         label:'Культура',              type:'text'   },
+      { key:'area',         label:'Площа, га',             type:'number' },
+      { key:'pct',          label:'% від ріллі (авто)',   type:'calc'   },
+      { key:'rotation_pos', label:'Позиція в сівозміні',  type:'text'   },
+      { key:'prev_crop',    label:'Попередник',           type:'text'   },
+      { key:'notes',        label:'Примітки',             type:'text'   },
+    ], {addLabel:'+ Додати культуру'})}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+      <div>${row('Всього під культурами', numField('gen_crops_total',data,'',true), 'га')}</div>
+      <div>${row('Пар / незайнятий', numField('gen_fallow',data,'',true), 'га')}</div>
+      <div>${row('К-сть культур', numField('gen_crops_count',data,'',true), 'шт.')}</div>
+    </div>
+  `) +
+
+  // ── 4. Структура поголів'я худоби ────────────────────────
+  sectionWrap('🐄 Структура поголів\'я худоби (якщо є)', `
+    ${dynTable('livestock_plan', dynRows(data,'livestock_plan',[
+      {species:'',type:'',heads:'',lu:'',facility:'',notes:''},
+    ]), [
+      { key:'species',  label:'Вид тварин',        type:'text'   },
+      { key:'type',     label:'Статево-вікова гр.',type:'text'   },
+      { key:'heads',    label:'Поголів\'я, гол.',  type:'number' },
+      { key:'lu',       label:'УГ (авто)',          type:'calc'   },
+      { key:'facility', label:'Місць у приміщенні',type:'number' },
+      { key:'notes',    label:'Примітки',          type:'text'   },
+    ], {addLabel:'+ Вид тварин'})}
+    ${row('Всього УГ (авто)', numField('gen_lu_total',data,'',true), 'УГ')}
+  `) +
+
+  // ── 5. Трудові ресурси ───────────────────────────────────
+  sectionWrap('👥 Трудові ресурси', `
+    ${row('Кількість постійних працівників', numField('gen_workers_perm',data), 'осіб')}
+    ${row('Кількість сезонних працівників',  numField('gen_workers_seas',data), 'осіб')}
+    ${row('Сімейна праця (власна)',          numField('gen_labor_family',data), 'люд-год/рік')}
+    ${row('Годинна ставка (власна праця)',   numField('gen_wage_own',data,'2.5'), 'грн/год')}
+    ${row('Годинна ставка (найм. праця)',    numField('gen_wage_hire',data,'2.8'), 'грн/год')}
+    <div style="margin-top:8px">
     ${dynTable('employees', dynRows(data,'employees',[{name:'',role:'',phone:'',email:''}]), [
       { key:'name',  label:'ПІБ',    type:'text' },
       { key:'role',  label:'Посада', type:'text' },
       { key:'phone', label:'Тел.',   type:'text' },
       { key:'email', label:'Email',  type:'text' },
     ], { addLabel:'+ Додати співробітника' })}
+    </div>
   `,'blue');
 
+  // Async comboboxes
   for (const [field, key, ph] of [
     ['gen_region', 'regions',   'напр. Полтавський р-н…'],
     ['gen_orgform','orgforms',  'ФГ, ТОВ, ПП…'],
-    ['gen_spec',   'specs',     'рослинництво…'],
+    ['gen_spec',   'specs',     'рослинництво, тваринництво, змішане…'],
     ['gen_system', 'growsys',   'conventional farming'],
     ['gen_curr',   'currencies','грн, €, $'],
   ]) {
@@ -1098,6 +1503,149 @@ function buildDairyProfit(body, data) {
 }
 
 // ============================================================
+// MODULE: ПТАХІВНИЦТВО (Broiler production)
+// ============================================================
+
+// Manure table for poultry — uses kg/bird instead of kg/LU
+function poultryManureTable(prefix, data) {
+  const f = (key, def) => `<input type="number" data-field="${prefix}${key}" value="${fillField(data, prefix+key, def)}" step="any" min="0" style="width:100%;padding:3px 5px;border:1px solid var(--border);border-radius:4px;font-size:12px;outline:none" oninput="recalcAll()">`;
+  const c = (key) => `<input data-field="${prefix}${key}" readonly class="calc" style="width:100%;padding:3px 5px;border-radius:4px;font-size:12px">`;
+  return `<table class="manure-table">
+    <thead><tr>
+      <th>Речовина</th>
+      <th style="width:90px">кг/гол./цикл</th>
+      <th style="width:70px">Еф.</th>
+      <th style="width:90px">Ефект. к-сть</th>
+      <th style="width:70px">Ціна/кг</th>
+      <th style="width:90px">Вартість/гол.</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>N (азот)</td>
+        <td>${f('_man_n_kg','0.035')}</td><td>${f('_man_n_eff','0.40')}</td>
+        <td>${c('_man_n_qty')}</td><td>${f('_man_n_price','')}</td><td>${c('_man_n_val')}</td>
+      </tr>
+      <tr>
+        <td>P₂O₅ (фосфор)</td>
+        <td>${f('_man_p_kg','0.025')}</td><td>${f('_man_p_eff','1.00')}</td>
+        <td>${c('_man_p_qty')}</td><td>${f('_man_p_price','')}</td><td>${c('_man_p_val')}</td>
+      </tr>
+      <tr>
+        <td>K₂O (калій)</td>
+        <td>${f('_man_k_kg','0.020')}</td><td>${f('_man_k_eff','1.00')}</td>
+        <td>${c('_man_k_qty')}</td><td>${f('_man_k_price','')}</td><td>${c('_man_k_val')}</td>
+      </tr>
+    </tbody>
+  </table>
+  ${row('<strong>Вартість посліду / гол.</strong>', numField(prefix+'_man_head', data, '', true), 'грн')}`;
+}
+
+function buildPoultryMD(body, data) {
+  body.innerHTML = `
+  <div style="margin-bottom:10px;font-size:12px;color:var(--gray)">
+    Таблиця 1 — Маржинальний дохід птахівництва (бройлери). Два варіанти для порівняння.
+  </div>
+  <div class="cascade-cols">
+  ${['1','2'].map(v => `<div>
+    ${sectionWrap(`🐔 Варіант ${v}`, `
+      <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Виробничі показники</div>
+      ${row('Маса добового курчати',           numField('pt'+v+'_w_start',data,'40'),   'г',    '',  getTip('pt_w_start'))}
+      ${row('Цільова жива маса (забій)',         numField('pt'+v+'_w_end',data,'2400'),  'г',    '',  getTip('pt_w_end'))}
+      ${row('Загальний приріст (авто)',          numField('pt'+v+'_gain',data,'',true),  'г')}
+      ${row('Тривалість вирощування',            numField('pt'+v+'_days_fat',data,'42'), 'днів', '',  getTip('pt_days_fat'))}
+      ${row('Санітарна пауза',                  numField('pt'+v+'_days_san',data,'14'), 'днів', '',  getTip('pt_days_san'))}
+      ${row('Тривалість циклу (авто)',           numField('pt'+v+'_cycle',data,'',true), 'днів')}
+      ${row('Середньодобовий приріст (авто)',    numField('pt'+v+'_adg',data,'',true),   'г/день')}
+      ${row('К-сть циклів на рік (авто)',        numField('pt'+v+'_turns',data,'',true), 'об./рік')}
+      ${row('Вихід тушки від живої маси',        pctField('pt'+v+'_yield',data,'74'),    '%',    '',  getTip('pt_yield'))}
+      ${row('Маса тушки / гол. (авто)',           numField('pt'+v+'_carcass',data,'',true),'кг')}
+      ${row('К-сть місць (голів)',               numField('pt'+v+'_heads',data,'10000'), 'гол.', '',  getTip('pt_heads'))}
+
+      <div style="font-size:11px;font-weight:700;color:var(--green);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.5px">Виручка</div>
+      ${row('Ціна реалізації',                  numField('pt'+v+'_price',data),    'грн/кг тушки', '', getTip('pt_price'))}
+      ${row('Виручка від птиці (авто)',          numField('pt'+v+'_rev',data,'',true), 'грн')}
+      ${row('Субсидії / дотації',               numField('pt'+v+'_subsidy',data),  'грн')}
+
+      <div style="font-size:11px;font-weight:700;color:var(--green);margin:8px 0 4px">♻️ Вартість посліду (на цикл, на партію)</div>
+      ${poultryManureTable('pt'+v, data)}
+      ${row('<strong>Вартість посліду, всього (авто)</strong>', numField('pt'+v+'_man_total',data,'',true), 'грн')}
+      ${row('<strong>Валова виручка (авто)</strong>',           numField('pt'+v+'_gross',data,'',true), 'грн')}
+
+      <div style="font-size:11px;font-weight:700;color:var(--red);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.5px">Пропорційні змінні витрати</div>
+      ${row('Добове курча (закупівля)',          numField('pt'+v+'_chick_cost',data),  'грн/гол.', '', getTip('pt_chick_cost'))}
+      <div style="font-size:11px;color:var(--gray);margin:6px 0 2px">Корми:</div>
+      ${dynTable('pt'+v+'_feeds', dynRows(data,'pt'+v+'_feeds',[
+        {name:'Стартер (0–10 днів)',  unit:'кг', mj:'13.5', qty:'0.12', price:'',sum:''},
+        {name:'Гровер (10–28 днів)',  unit:'кг', mj:'13.2', qty:'0.90', price:'',sum:''},
+        {name:'Фінішер (28–42 дні)', unit:'кг', mj:'13.0', qty:'3.08', price:'',sum:''},
+      ]), [
+        { key:'name',  label:'Назва корму',   type:'text'   },
+        { key:'unit',  label:'Од.',           type:'text',  width:'45px', def:'кг' },
+        { key:'mj',    label:'МДж ОЕ/кг',    type:'number', width:'75px' },
+        { key:'qty',   label:'кг/гол.',       type:'number' },
+        { key:'price', label:'Ціна/кг',       type:'number' },
+        { key:'sum',   label:'Сума (авто)',   type:'calc'   },
+      ], {addLabel:'+ Корм'})}
+      ${row('Корми, всього (авто)',               numField('pt'+v+'_feed_total',data,'',true), 'грн')}
+      ${row('МДж ОЕ / гол. (авто)',               numField('pt'+v+'_mj_total',data,'',true), 'МДж')}
+      ${row('Ветеринар, вакцинація, дезінфекція', numField('pt'+v+'_vet',data),        'грн', '', getTip('pt_vet'))}
+      ${row('Послуги підрядників',                numField('pt'+v+'_services',data),   'грн', '', getTip('pt_services'))}
+      <div style="font-size:11px;color:var(--gray);margin:6px 0 2px">Механізація (власна):</div>
+      ${row('— Кормові лінії',                   numField('pt'+v+'_mech_feed',data),  'грн', '', getTip('pt_mech_feed'))}
+      ${row('— Вентиляція та мікроклімат',        numField('pt'+v+'_mech_vent',data),  'грн', '', getTip('pt_mech_vent'))}
+      ${row('— Видалення підстилки',              numField('pt'+v+'_mech_man',data),   'грн', '', getTip('pt_mech_man'))}
+      ${row('— Обігрів (броудери)',               numField('pt'+v+'_mech_heat',data),  'грн', '', getTip('pt_mech_heat'))}
+      ${row('Інші прямі витрати',                 numField('pt'+v+'_other',data),      'грн', '', getTip('pt_other'))}
+      ${row('<strong>Змінні витрати, всього (авто)</strong>', numField('pt'+v+'_costs',data,'',true), 'грн')}
+
+      <div style="height:8px;border-top:2px solid var(--blue);margin-top:10px"></div>
+      ${row('<strong>МД практичний (авто)</strong>', numField('pt'+v+'_md',data,'',true), 'грн')}
+      ${row('МД на 1 голову (авто)',                 numField('pt'+v+'_md_head',data,'',true), 'грн/гол.')}
+      ${row('МД на 1 місце в рік (авто)',            numField('pt'+v+'_md_place',data,'',true), 'грн/міс./рік')}
+    `,'blue')}
+  </div>`).join('')}
+  </div>`;
+}
+
+function buildPoultryProfit(body, data) {
+  body.innerHTML = `
+  <div style="font-size:12px;color:var(--gray);margin-bottom:12px">
+    Каскад прибутковості на 1 голову. Заповніть параметри нижче; МД береться з Таблиці 1.
+  </div>
+  ${cascadeParamsSection('ptc', data)}
+  <div class="cascade-cols">
+  ${['1','2'].map(v => `
+  <div>
+    ${sectionWrap(`💹 Варіант ${v} — Каскад на 1 гол.`, `
+      ${cascadeWaterfall(
+        'ptc'+v, data,
+        'pt'+v+'_gross_per', 'pt'+v+'_costs_per',
+        'Прибуток / гол. Вар. '+v
+      )}
+      ${row('Прибуток / місце в рік', numField('ptc'+v+'_profit_place',data,'',true), 'грн/міс./рік')}
+    `,'green')}
+  </div>`).join('')}
+  </div>`;
+}
+
+function buildPoultryAnalysis(body, data) {
+  body.innerHTML = sectionWrap('📊 Аналіз беззбитковості', `
+    <div class="cascade-cols">
+    ${['1','2'].map(v => `
+    <div>
+      <strong style="display:block;margin-bottom:8px;color:var(--navy)">Варіант ${v}</strong>
+      ${row('Поріг ціни (беззбитковість МД)',      numField('pta'+v+'_bep_price_md',data,'',true),   'грн/кг')}
+      ${row('Поріг ціни (повні витрати)',           numField('pta'+v+'_bep_price_full',data,'',true), 'грн/кг')}
+      ${row('Поріг завантаженості місць',           numField('pta'+v+'_bep_load',data,'',true),       '%')}
+      ${row('Потреба в оборотному капіталі',        numField('pta'+v+'_working_cap',data,'',true),    'грн')}
+      ${row('Рентабельність за МД',                 numField('pta'+v+'_rent_md',data,'',true),        '%')}
+      ${row('Рентабельність за прибутком',          numField('pta'+v+'_rent_profit',data,'',true),    '%')}
+    </div>`).join('')}
+    </div>
+  `,'blue');
+}
+
+// ============================================================
 // CALCULATION ENGINE
 // ============================================================
 function setCalc(field, value) {
@@ -1106,7 +1654,10 @@ function setCalc(field, value) {
 }
 function getVal(field) {
   const el = document.querySelector(`[data-field="${field}"]`);
-  return el ? fnum(el.value) : 0;
+  if (el) return fnum(el.value);
+  // Fallback to saved data for fields from other tabs not currently in DOM
+  if (currentForm && currentForm.data) return fnum(currentForm.data[field]);
+  return 0;
 }
 function dynColSum(section, col) {
   let s = 0;
@@ -1213,6 +1764,7 @@ function calcCascade(prefix_c, params_prefix, grossPerHead, varPerHead, turns_pe
 function recalcAll() {
   if (!currentFormId) return;
   const mod = currentModule, tab = currentTab;
+  if (mod === 'crop'  && tab === 0) recalcCropGeneral();
   if (mod === 'crop'  && tab === 1) recalcCropGM();
   if (mod === 'crop'  && tab === 2) recalcCropAssets();
   if (mod === 'crop'  && tab === 3) recalcCropAnalysis();
@@ -1222,9 +1774,78 @@ function recalcAll() {
   if (mod === 'bulls' && tab === 0) recalcBulls();
   if (mod === 'bulls' && tab === 1) recalcBullsAgg();
   if (mod === 'bulls' && tab === 2) recalcBullsProfit();
-  if (mod === 'dairy' && tab === 0) recalcDairy();
-  if (mod === 'dairy' && tab === 1) recalcDairyAgg();
-  if (mod === 'dairy' && tab === 2) recalcDairyProfit();
+  if (mod === 'dairy'   && tab === 0) recalcDairy();
+  if (mod === 'dairy'   && tab === 1) recalcDairyAgg();
+  if (mod === 'dairy'   && tab === 2) recalcDairyProfit();
+  if (mod === 'poultry' && tab === 0) recalcPoultry();
+  if (mod === 'poultry' && tab === 1) recalcPoultryProfit();
+  if (mod === 'poultry' && tab === 2) recalcPoultryAnalysis();
+}
+
+// ── Crop General ─────────────────────────────────────────────
+function recalcCropGeneral() {
+  // Земельний фонд: total = own + rent per row
+  let totalOwn = 0, totalRent = 0;
+  document.querySelectorAll('[data-dyn-section="land_fund"] tr[data-row-idx]').forEach(tr => {
+    const own  = fnum(tr.querySelector('[data-col="own"]')?.value);
+    const rent = fnum(tr.querySelector('[data-col="rent"]')?.value);
+    const tot  = own + rent;
+    const totEl = tr.querySelector('[data-col="total"]');
+    if (totEl) totEl.value = tot > 0 ? tot.toFixed(2) : '';
+    totalOwn  += own;
+    totalRent += rent;
+  });
+  setCalc('gen_land_own',   totalOwn);
+  setCalc('gen_land_rent',  totalRent);
+  setCalc('gen_land_total', totalOwn + totalRent);
+
+  // Структура посівних площ: % від ріллі, сума площ
+  const rillya = (() => {
+    let r = 0;
+    document.querySelectorAll('[data-dyn-section="land_fund"] tr[data-row-idx]').forEach(tr => {
+      const typeEl = tr.querySelector('[data-col="type"]');
+      if (typeEl && typeEl.value.toLowerCase().includes('рілля')) {
+        r = fnum(tr.querySelector('[data-col="own"]')?.value) + fnum(tr.querySelector('[data-col="rent"]')?.value);
+      }
+    });
+    return r;
+  })();
+
+  let cropTotal = 0, cropCount = 0;
+  document.querySelectorAll('[data-dyn-section="crop_plan"] tr[data-row-idx]').forEach(tr => {
+    const area = fnum(tr.querySelector('[data-col="area"]')?.value);
+    const pctEl = tr.querySelector('[data-col="pct"]');
+    if (pctEl) pctEl.value = (rillya > 0 && area > 0) ? (area / rillya * 100).toFixed(1) : '';
+    if (area > 0) { cropTotal += area; cropCount++; }
+  });
+  setCalc('gen_crops_total', cropTotal);
+  setCalc('gen_fallow',      Math.max(0, rillya - cropTotal));
+  setCalc('gen_crops_count', cropCount);
+
+  // Поголів'я худоби: УГ = heads × коефіцієнт (за типом)
+  const LU_COEFF = {
+    'корова':0.8,'корови':0.8,'дійні':0.8,'молочна':0.8,
+    'бичок':0.6,'бичків':0.6,'бики':0.6,'бичків':0.6,'телиця':0.5,'телиці':0.5,
+    'свиня':0.12,'свині':0.12,'свиней':0.12,'кнур':0.2,
+    'вівця':0.1,'вівці':0.1,'коза':0.1,'кінь':1.0,'коні':1.0,
+  };
+  let luTotal = 0;
+  document.querySelectorAll('[data-dyn-section="livestock_plan"] tr[data-row-idx]').forEach(tr => {
+    const speciesEl = tr.querySelector('[data-col="species"]');
+    const heads = fnum(tr.querySelector('[data-col="heads"]')?.value);
+    let coeff = 0.5;
+    if (speciesEl) {
+      const sp = speciesEl.value.toLowerCase();
+      for (const [key, val] of Object.entries(LU_COEFF)) {
+        if (sp.includes(key)) { coeff = val; break; }
+      }
+    }
+    const lu = heads * coeff;
+    const luEl = tr.querySelector('[data-col="lu"]');
+    if (luEl) luEl.value = lu > 0 ? lu.toFixed(2) : '';
+    luTotal += lu;
+  });
+  setCalc('gen_lu_total', luTotal);
 }
 
 // ── Crop GM ──────────────────────────────────────────────────
@@ -1379,11 +2000,16 @@ function recalcSwine() {
     const sub   = getVal('sw'+v+'_subsidy');
     setCalc('sw'+v+'_rev', rev);
 
-    const manTotal = calcManure('sw'+v, lu);
+    // manure per head, display per herd
+    const manPerHead = calcManure('sw'+v, lu);
+    const manTotal   = manPerHead * heads;
+    setCalc('sw'+v+'_man_total', manTotal);
     setCalc('sw'+v+'_gross', rev + sub + manTotal);
 
-    const feedTotal = dynCalcSum('sw'+v+'_feeds');
-    const mjTotal   = dynCalcMJ('sw'+v+'_feeds');
+    // feed cost per head × heads = total herd feed cost
+    const feedPerHead = dynCalcSum('sw'+v+'_feeds');
+    const feedTotal   = feedPerHead * heads;
+    const mjTotal     = dynCalcMJ('sw'+v+'_feeds');
     setCalc('sw'+v+'_feed_total', feedTotal);
     setCalc('sw'+v+'_mj_total',   mjTotal);
 
@@ -1455,11 +2081,16 @@ function recalcBulls() {
     const sub   = getVal('bl'+vi+'_subsidy');
     setCalc('bl'+vi+'_rev', rev);
 
-    const manTotal = calcManure('bl'+vi, lu);
+    // manure per head × heads = total herd value
+    const manPerHead = calcManure('bl'+vi, lu);
+    const manTotal   = manPerHead * heads;
+    setCalc('bl'+vi+'_man_total', manTotal);
     setCalc('bl'+vi+'_gross', rev + sub + manTotal);
 
-    const feedTotal = dynCalcSum('bl'+vi+'_feeds');
-    const mjTotal   = dynCalcMJ('bl'+vi+'_feeds');
+    // feed cost per head × heads = total herd feed cost
+    const feedPerHead = dynCalcSum('bl'+vi+'_feeds');
+    const feedTotal   = feedPerHead * heads;
+    const mjTotal     = dynCalcMJ('bl'+vi+'_feeds');
     setCalc('bl'+vi+'_feed_total', feedTotal);
     setCalc('bl'+vi+'_mj_total',   mjTotal);
 
@@ -1566,6 +2197,146 @@ function recalcDairyProfit() {
     calcCascade('dpc'+vi, 'dpc', grossPer, costsPer, 0);
   }
 }
+
+// ── Poultry manure calc (per bird, not per LU) ───────────────
+function calcPoultryManure(prefix) {
+  let total = 0;
+  for (const n of ['n','p','k']) {
+    const qty = getVal(prefix+'_man_'+n+'_kg') * getVal(prefix+'_man_'+n+'_eff');
+    const val = qty * getVal(prefix+'_man_'+n+'_price');
+    setCalc(prefix+'_man_'+n+'_qty', qty);
+    setCalc(prefix+'_man_'+n+'_val', val);
+    total += val;
+  }
+  setCalc(prefix+'_man_head', total);
+  return total;
+}
+
+// ── Poultry MD ───────────────────────────────────────────────
+function recalcPoultry() {
+  for (const v of ['1','2']) {
+    const wS  = getVal('pt'+v+'_w_start');   // grams
+    const wE  = getVal('pt'+v+'_w_end');     // grams
+    const gain = wE - wS;
+    const daysFat = getVal('pt'+v+'_days_fat');
+    const daysSan = getVal('pt'+v+'_days_san');
+    const cycle   = daysFat + daysSan;
+    const adg     = daysFat > 0 ? gain / daysFat : 0;
+    const turns   = cycle > 0 ? 365 / cycle : 0;
+    const carcass = wE / 1000 * getVal('pt'+v+'_yield') / 100;  // kg per bird
+
+    setCalc('pt'+v+'_gain',    gain);
+    setCalc('pt'+v+'_cycle',   cycle);
+    setCalc('pt'+v+'_adg',     adg);
+    setCalc('pt'+v+'_turns',   turns);
+    setCalc('pt'+v+'_carcass', carcass);
+
+    const heads = getVal('pt'+v+'_heads');
+    const rev   = carcass * heads * getVal('pt'+v+'_price');
+    const sub   = getVal('pt'+v+'_subsidy');
+    setCalc('pt'+v+'_rev', rev);
+
+    // poultry manure per bird, display per herd
+    const manPerBird = calcPoultryManure('pt'+v);
+    const manTotal   = manPerBird * heads;
+    setCalc('pt'+v+'_man_total', manTotal);
+    setCalc('pt'+v+'_gross', rev + sub + manTotal);
+
+    // feed cost per bird × heads
+    const feedPerBird = dynCalcSum('pt'+v+'_feeds');
+    const feedTotal   = feedPerBird * heads;
+    const mjTotal     = dynCalcMJ('pt'+v+'_feeds');
+    setCalc('pt'+v+'_feed_total', feedTotal);
+    setCalc('pt'+v+'_mj_total',   mjTotal);
+
+    const mechSub = getVal('pt'+v+'_mech_feed') + getVal('pt'+v+'_mech_vent') +
+                    getVal('pt'+v+'_mech_man')   + getVal('pt'+v+'_mech_heat');
+    const costs = getVal('pt'+v+'_chick_cost') * heads + feedTotal +
+      getVal('pt'+v+'_vet') + getVal('pt'+v+'_services') + mechSub + getVal('pt'+v+'_other');
+    const md = getVal('pt'+v+'_gross') - costs;
+
+    setCalc('pt'+v+'_costs',    costs);
+    setCalc('pt'+v+'_md',       md);
+    setCalc('pt'+v+'_md_head',  heads > 0 ? md / heads : 0);
+    setCalc('pt'+v+'_md_place', heads > 0 ? md / heads * turns : 0);
+  }
+}
+
+// ── Poultry Cascade ──────────────────────────────────────────
+function recalcPoultryProfit() {
+  for (const v of ['1','2']) {
+    const heads   = getVal('pt'+v+'_heads') || 1;
+    const turns   = getVal('pt'+v+'_turns') || 1;
+    const grossPer = getVal('pt'+v+'_gross') / heads;
+    const costsPer = getVal('pt'+v+'_costs') / heads;
+    setCalc('pt'+v+'_gross_per', grossPer);
+    setCalc('pt'+v+'_costs_per', costsPer);
+    calcCascade('ptc'+v, 'ptc', grossPer, costsPer, turns);
+  }
+}
+
+// ── Poultry Break-even ───────────────────────────────────────
+function recalcPoultryAnalysis() {
+  for (const v of ['1','2']) {
+    const heads   = getVal('pt'+v+'_heads') || 1;
+    const gross   = getVal('pt'+v+'_gross');
+    const costs   = getVal('pt'+v+'_costs');
+    const carcass = getVal('pt'+v+'_carcass');
+    const md      = getVal('pt'+v+'_md');
+
+    const bepPriceMD   = carcass > 0 && heads > 0 ? (costs / heads) / carcass : 0;
+    const rentMD       = gross > 0 ? md / gross * 100 : 0;
+    const workingCap   = costs * 0.6;
+
+    setCalc('pta'+v+'_bep_price_md',   bepPriceMD);
+    setCalc('pta'+v+'_bep_price_full', bepPriceMD * 1.15);
+    setCalc('pta'+v+'_bep_load',       bepPriceMD > 0 ? Math.min(100, costs / (gross || 1) * 100) : 0);
+    setCalc('pta'+v+'_working_cap',    workingCap);
+    setCalc('pta'+v+'_rent_md',        rentMD);
+    setCalc('pta'+v+'_rent_profit',    0);
+  }
+}
+
+// ============================================================
+// MOBILE NAVIGATION
+// ============================================================
+window.toggleSidebar = function() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('mobile-overlay');
+  const isOpen  = sidebar.classList.contains('open');
+  closeMobileOverlays();
+  if (!isOpen) {
+    sidebar.classList.add('open');
+    overlay.classList.add('show');
+  }
+};
+
+window.toggleFormsPanel = function() {
+  const panel   = document.getElementById('forms-panel');
+  const overlay = document.getElementById('mobile-overlay');
+  const isOpen  = panel.classList.contains('open');
+  closeMobileOverlays();
+  if (!isOpen) {
+    panel.classList.add('open');
+    overlay.classList.add('show');
+  }
+};
+
+window.closeMobileOverlays = function() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('forms-panel')?.classList.remove('open');
+  document.getElementById('mobile-overlay')?.classList.remove('show');
+};
+
+// Close panels on swipe left (basic touch support)
+(function initSwipeClose() {
+  let startX = 0;
+  document.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    if (dx < -60) closeMobileOverlays();
+  }, { passive: true });
+})();
 
 // ============================================================
 // BOOT
